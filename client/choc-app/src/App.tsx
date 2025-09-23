@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from "react";
 import { useCamera } from "./hooks/useCamera";
 import { useDisplaySettings } from "./hooks/useDisplaySettings";
 import { useBlinkDetector } from "./useBlinkDetector";
+import { useGazeDetector } from "./hooks/useGazeDetector";
 import { useGameLogic } from "./useGameLogic";
 import { GameUI } from "./GameUI";
 import { VideoDisplay } from "./components/VideoDisplay";
@@ -43,8 +44,14 @@ export default function App() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [tempApiKey, setTempApiKey] = useState(""); // 입력용 임시 상태
 
+  // 시선 감지 활성화 여부
+  const [gazeEnabled, setGazeEnabled] = useState(false);
+
   // 모달이 열려 있으면 깜빡임 감지 비활성화
   const blink = useBlinkDetector(videoRef, started && !showApiInitModal);
+
+  // 시선 감지 (깜빡임 감지와 독립적으로 동작)
+  const gaze = useGazeDetector(videoRef, gazeEnabled && started && !showApiInitModal);
 
   // 게임 로직
   const { gameState, resetGame, togglePause, restoreHeart, loseHeart } =
@@ -427,6 +434,14 @@ export default function App() {
             setApiKey(null); // API Key 초기화
             localStorage.removeItem("apiKey"); // 로컬 스토리지에서 삭제
           }}
+          gazeEnabled={gazeEnabled}
+          gazeDirection={gaze.direction}
+          gazePos={gaze.gazePos}
+          calibratedPos={gaze.calibratedPos}
+          gazeReady={gaze.isReady}
+          onGazeEnabledChange={setGazeEnabled}
+          onGazeCalibrate={gaze.calibrate}
+          onGazeReset={gaze.reset}
         />
       )}
 
@@ -443,6 +458,39 @@ export default function App() {
 
       {/* HUD */}
       {/* {showHUD && <p style={styles.hud}>{hudText}</p>} */}
+
+      {/* 시선 감지 디버깅 오버레이 */}
+      {gazeEnabled && gaze.isReady && (
+        <div style={{
+          position: "fixed",
+          top: 20,
+          right: 20,
+          background: "rgba(0,0,0,0.8)",
+          color: "#fff",
+          padding: 12,
+          borderRadius: 8,
+          fontSize: 12,
+          fontFamily: "monospace",
+          zIndex: 1000,
+        }}>
+          <div style={{ marginBottom: 4, fontWeight: "bold" }}>
+            🎯 시선 감지 상태
+          </div>
+          <div>방향: <span style={{
+            color: gaze.direction === "NO_FACE" ? "#ff5050" :
+                  gaze.direction === "EYES_CLOSED" ? "#ffb86b" : "#21c074",
+            fontWeight: "bold"
+          }}>
+            {gaze.direction}
+          </span></div>
+          <div>원시 좌표: ({gaze.gazePos.px.toFixed(2)}, {gaze.gazePos.py.toFixed(2)})</div>
+          <div>보정 좌표: ({gaze.calibratedPos.px.toFixed(2)}, {gaze.calibratedPos.py.toFixed(2)})</div>
+          <div>임계값: τx={gaze.thresholds.tau_x}, τy={gaze.thresholds.tau_y}</div>
+          <div style={{ fontSize: 10, color: "#aaa", marginTop: 4 }}>
+            C: 캘리브레이션 | R: 리셋
+          </div>
+        </div>
+      )}
 
       {/* <p style={styles.tip}>
         ※ 완전한 깜빡임 사이클(뜸→감음→뜸)을 감지합니다. 눈을 감고만 있으면

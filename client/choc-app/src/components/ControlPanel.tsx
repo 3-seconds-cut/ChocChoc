@@ -1,5 +1,6 @@
 // src/components/ControlPanel.tsx
 import React from "react";
+import { GazeDirection } from "../hooks/useGazeDetector";
 
 interface ControlPanelProps {
   state: "idle" | "loading" | "ready" | "error";
@@ -24,6 +25,16 @@ interface ControlPanelProps {
   apiKey?: string | null;
   onOpenApiKeyModal?: () => void;
   onClearApiKey?: () => void;
+
+  // 시선 감지 관련 props
+  gazeEnabled?: boolean;
+  gazeDirection?: GazeDirection;
+  gazePos?: { px: number; py: number };
+  calibratedPos?: { px: number; py: number };
+  gazeReady?: boolean;
+  onGazeEnabledChange?: (enabled: boolean) => void;
+  onGazeCalibrate?: () => void;
+  onGazeReset?: () => void;
 }
 
 export function ControlPanel({
@@ -47,6 +58,14 @@ export function ControlPanel({
   apiKey,
   onOpenApiKeyModal,
   onClearApiKey,
+  gazeEnabled = false,
+  gazeDirection = "NO_FACE",
+  gazePos = { px: 0, py: 0 },
+  calibratedPos = { px: 0, py: 0 },
+  gazeReady = false,
+  onGazeEnabledChange,
+  onGazeCalibrate,
+  onGazeReset,
 }: ControlPanelProps) {
   const getBlinkStateColor = () => {
     if (blinkState === "CLOSED" || blinkState === "CLOSING") return "#ff5050";
@@ -167,6 +186,80 @@ export function ControlPanel({
         >
           {getBlinkStateText()}
         </button>
+      </div>
+
+      {/* 시선 감지 섹션 */}
+      <div style={{ marginTop: 8, padding: 8, border: "1px solid #444", borderRadius: 4 }}>
+        <div style={{ fontSize: 11, color: "#ccc", marginBottom: 4 }}>
+          🎯 시선 감지 (Gaze Detection)
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <label style={{ fontSize: 10, color: "#ddd" }}>
+            <input
+              type="checkbox"
+              checked={gazeEnabled}
+              onChange={(e) => onGazeEnabledChange?.(e.target.checked)}
+              style={{ marginRight: 4 }}
+            />
+            활성화
+          </label>
+          <span style={{ fontSize: 10, color: gazeReady ? "#21c074" : "#999" }}>
+            {gazeReady ? "준비됨" : "대기중"}
+          </span>
+        </div>
+
+        {gazeEnabled && (
+          <>
+            <div style={{ fontSize: 10, color: "#ddd", marginBottom: 4 }}>
+              방향: <span style={{
+                color: gazeDirection === "NO_FACE" ? "#ff5050" :
+                      gazeDirection === "EYES_CLOSED" ? "#ffb86b" : "#21c074",
+                fontWeight: "bold"
+              }}>
+                {gazeDirection}
+              </span>
+            </div>
+
+            <div style={{ fontSize: 9, color: "#aaa", marginBottom: 4 }}>
+              원시: px={gazePos.px.toFixed(2)}, py={gazePos.py.toFixed(2)}
+            </div>
+
+            <div style={{ fontSize: 9, color: "#aaa", marginBottom: 6 }}>
+              보정: px={calibratedPos.px.toFixed(2)}, py={calibratedPos.py.toFixed(2)}
+            </div>
+
+            <div style={{ display: "flex", gap: 4 }}>
+              <button
+                style={{
+                  ...styles.smallButton,
+                  fontSize: 9,
+                  padding: "2px 6px",
+                  backgroundColor: "#007bff",
+                  color: "white",
+                }}
+                onClick={onGazeCalibrate}
+                disabled={!gazeReady}
+                title="현재 위치를 중앙으로 캘리브레이션 (키보드 C)"
+              >
+                캘리브레이션
+              </button>
+              <button
+                style={{
+                  ...styles.smallButton,
+                  fontSize: 9,
+                  padding: "2px 6px",
+                  backgroundColor: "#6c757d",
+                  color: "white",
+                }}
+                onClick={onGazeReset}
+                title="캘리브레이션 초기화 (키보드 R)"
+              >
+                리셋
+              </button>
+            </div>
+          </>
+        )}
       </div>
       <div>
         Blinks: <b>{blinks}</b>
