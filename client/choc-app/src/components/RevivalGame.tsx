@@ -336,6 +336,7 @@ export const RevivalGame: React.FC<RevivalGameProps> = ({
           <div>• 얼굴 인식: {gazeDirection !== "NO_FACE" ? '✅' : '❌'}</div>
           <div>• 비디오 크기: {videoElement ? `${videoElement.videoWidth}x${videoElement.videoHeight}` : '미확인'}</div>
           <div>• 비디오 상태: {videoElement ? (videoElement.readyState >= 2 ? '재생중' : '로딩중') : '없음'}</div>
+          <div>• 실제 준비: {(videoElement && videoElement.videoWidth > 0) ? '✅' : '❌'}</div>
         </div>
 
         <ProgressContainer>

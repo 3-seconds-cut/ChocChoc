@@ -3,7 +3,8 @@ import { useState, useEffect, useRef } from "react";
 import { useCamera } from "./hooks/useCamera";
 import { useDisplaySettings } from "./hooks/useDisplaySettings";
 import { useBlinkDetector } from "./useBlinkDetector";
-import { useGazeDetector } from "./hooks/useGazeDetector";
+import { useGazeDetectorV2 } from "./hooks/useGazeDetectorV2";
+import { useRevivalGazeDetector } from "./hooks/useRevivalGazeDetector";
 import { useGameLogic } from "./useGameLogic";
 import { GameUI } from "./GameUI";
 import { VideoDisplay } from "./components/VideoDisplay";
@@ -66,15 +67,20 @@ export default function App() {
   // 부활 게임 관련 상태
   const [showRevivalGame, setShowRevivalGame] = useState(false);
 
-  // 모달이 열려 있으면 깜빡임 감지 비활성화
-  const blink = useBlinkDetector(videoRef, started && !showApiInitModal && !showGameOverModal && !showRevivalGame);
+  // 깜빡임 감지: 모달이 열려있거나 부활 게임 중이 아닐 때 활성화
+  const blinkDetectionEnabled = started && !showApiInitModal && !showGameOverModal && !showRevivalGame;
+  const blink = useBlinkDetector(videoRef, blinkDetectionEnabled);
 
-  // 시선 감지 (깜빡임 감지와 독립적으로 동작, 부활 게임 중에는 항상 활성화)
-  const gaze = useGazeDetector(videoRef, (gazeEnabled || showRevivalGame) && started && !showApiInitModal && !showGameOverModal);
+  // 시선 감지: 평상시에는 사용자가 활성화했을 때만 동작
+  const normalGazeEnabled = gazeEnabled && started && !showApiInitModal && !showGameOverModal && !showRevivalGame;
+  const gaze = useGazeDetectorV2(blink, normalGazeEnabled);
 
-  // 게임 로직
+  // 부활 게임 전용 시선 감지: 부활 게임 중에만 동작
+  const revivalGaze = useRevivalGazeDetector(videoRef, showRevivalGame);
+
+  // 게임 로직 (부활 게임 중에는 깜빡임 카운트 비활성화)
   const { gameState, resetGame, togglePause, restoreHeart, loseHeart } =
-    useGameLogic(blink.blinks, blink.lastBlinkAt);
+    useGameLogic(showRevivalGame ? 0 : blink.blinks, showRevivalGame ? null : blink.lastBlinkAt);
 
   // 게임 오버 감지 및 모달 표시
   useEffect(() => {
@@ -91,7 +97,14 @@ export default function App() {
     setShowGameOverModal(false);
 
     // 부활 게임을 위해 카메라와 얼굴 표시 강제 활성화
-    console.log("현재 카메라 상태:", { state, ready });
+    console.log("현재 상태:", {
+      state,
+      ready,
+      videoExists: !!videoRef.current,
+      videoWidth: videoRef.current?.videoWidth,
+      videoHeight: videoRef.current?.videoHeight,
+      blinkVideoSize: blink.videoSize
+    });
 
     // 카메라가 준비되지 않았으면 강제로 시작
     if (state !== "ready") {
@@ -474,11 +487,11 @@ export default function App() {
       {/* 부활 게임 */}
       <RevivalGame
         isVisible={showRevivalGame}
-        gazeDirection={gaze.direction}
+        gazeDirection={revivalGaze.direction}
         onGameComplete={handleRevivalGameComplete}
         onGameCancel={handleRevivalGameCancel}
         cameraReady={state === "ready" && ready}
-        gazeReady={gaze.isReady}
+        gazeReady={revivalGaze.isReady}
         videoElement={videoRef.current}
       />
 
@@ -536,13 +549,13 @@ export default function App() {
             localStorage.removeItem("apiKey"); // 로컬 스토리지에서 삭제
           }}
           gazeEnabled={gazeEnabled}
-          gazeDirection={gaze.direction}
-          gazePos={gaze.gazePos}
-          calibratedPos={gaze.calibratedPos}
-          gazeReady={gaze.isReady}
+          gazeDirection={showRevivalGame ? revivalGaze.direction : gaze.direction}
+          gazePos={showRevivalGame ? revivalGaze.gazePos : gaze.gazePos}
+          calibratedPos={showRevivalGame ? revivalGaze.calibratedPos : gaze.calibratedPos}
+          gazeReady={showRevivalGame ? revivalGaze.isReady : gaze.isReady}
           onGazeEnabledChange={setGazeEnabled}
-          onGazeCalibrate={gaze.calibrate}
-          onGazeReset={gaze.reset}
+          onGazeCalibrate={showRevivalGame ? revivalGaze.calibrate : gaze.calibrate}
+          onGazeReset={showRevivalGame ? revivalGaze.reset : gaze.reset}
         />
       )}
 
@@ -561,7 +574,7 @@ export default function App() {
       {/* {showHUD && <p style={styles.hud}>{hudText}</p>} */}
 
       {/* 시선 감지 디버깅 오버레이 */}
-      {gazeEnabled && gaze.isReady && (
+      {((gazeEnabled && gaze.isReady && !showRevivalGame) || (showRevivalGame && revivalGaze.isReady)) && (
         <div style={{
           position: "fixed",
           top: 20,
@@ -575,18 +588,18 @@ export default function App() {
           zIndex: 1000,
         }}>
           <div style={{ marginBottom: 4, fontWeight: "bold" }}>
-            🎯 시선 감지 상태
+            {showRevivalGame ? "🔄 부활 게임 시선 감지" : "🎯 시선 감지 상태"}
           </div>
           <div>방향: <span style={{
-            color: gaze.direction === "NO_FACE" ? "#ff5050" :
-                  gaze.direction === "EYES_CLOSED" ? "#ffb86b" : "#21c074",
+            color: (showRevivalGame ? revivalGaze.direction : gaze.direction) === "NO_FACE" ? "#ff5050" :
+                  (showRevivalGame ? revivalGaze.direction : gaze.direction) === "EYES_CLOSED" ? "#ffb86b" : "#21c074",
             fontWeight: "bold"
           }}>
-            {gaze.direction}
+            {showRevivalGame ? revivalGaze.direction : gaze.direction}
           </span></div>
-          <div>원시 좌표: ({gaze.gazePos.px.toFixed(2)}, {gaze.gazePos.py.toFixed(2)})</div>
-          <div>보정 좌표: ({gaze.calibratedPos.px.toFixed(2)}, {gaze.calibratedPos.py.toFixed(2)})</div>
-          <div>임계값: τx={gaze.thresholds.tau_x}, τy={gaze.thresholds.tau_y}</div>
+          <div>원시 좌표: ({(showRevivalGame ? revivalGaze.gazePos.px : gaze.gazePos.px).toFixed(2)}, {(showRevivalGame ? revivalGaze.gazePos.py : gaze.gazePos.py).toFixed(2)})</div>
+          <div>보정 좌표: ({(showRevivalGame ? revivalGaze.calibratedPos.px : gaze.calibratedPos.px).toFixed(2)}, {(showRevivalGame ? revivalGaze.calibratedPos.py : gaze.calibratedPos.py).toFixed(2)})</div>
+          {!showRevivalGame && <div>임계값: τx={gaze.thresholds?.tau_x}, τy={gaze.thresholds?.tau_y}</div>}
           <div style={{ fontSize: 10, color: "#aaa", marginTop: 4 }}>
             C: 캘리브레이션 | R: 리셋
           </div>

@@ -30,6 +30,11 @@ export interface BlinkResult {
 
   /** 임계값이 마지막으로 갱신된 시각(ms) */
   lastCalibratedAt: number | null;
+
+  /** FaceMesh 랜드마크 데이터 (시선 감지용) */
+  landmarks: { x: number; y: number }[] | null;
+  /** 비디오 크기 정보 */
+  videoSize: { width: number; height: number } | null;
 }
 
 /** 유클리드 거리 */
@@ -59,7 +64,7 @@ function smooth(prev: number, next: number, alpha = 0.4) {
   return prev * (1 - alpha) + next * alpha;
 }
 
-export function useBlinkDetector(videoRef: RefObject<HTMLVideoElement>) {
+export function useBlinkDetector(videoRef: RefObject<HTMLVideoElement>, enabled: boolean = true) {
   // 초기 고정 임계값 (첫 10초만 사용)
   const INIT_CLOSE_T = 0.35;
   const INIT_OPEN_T = 0.35;
@@ -79,6 +84,8 @@ export function useBlinkDetector(videoRef: RefObject<HTMLVideoElement>) {
     windowMin: Number.POSITIVE_INFINITY,
     windowMax: Number.NEGATIVE_INFINITY,
     lastCalibratedAt: null,
+    landmarks: null,
+    videoSize: null,
   });
 
   const lastSnapRef = useRef<BlinkResult | null>(null);
@@ -97,8 +104,20 @@ export function useBlinkDetector(videoRef: RefObject<HTMLVideoElement>) {
       Math.abs(prev.OPEN_T - next.OPEN_T) < EPS &&
       Math.abs(prev.windowMin - next.windowMin) < EPS &&
       Math.abs(prev.windowMax - next.windowMax) < EPS &&
-      prev.lastCalibratedAt === next.lastCalibratedAt
+      prev.lastCalibratedAt === next.lastCalibratedAt &&
+      // 랜드마크와 비디오 크기 비교는 스킵 (항상 업데이트)
+      true
     ) {
+      // 랜드마크나 비디오 크기가 바뀌었으면 업데이트
+      if (
+        (prev.landmarks !== next.landmarks) ||
+        (prev.videoSize?.width !== next.videoSize?.width) ||
+        (prev.videoSize?.height !== next.videoSize?.height)
+      ) {
+        lastSnapRef.current = next;
+        setRes(next);
+        return;
+      }
       return; // 변화 없으면 렌더 스킵
     }
     lastSnapRef.current = next;
@@ -159,10 +178,11 @@ export function useBlinkDetector(videoRef: RefObject<HTMLVideoElement>) {
 
   // videoRef.current가 변경될 때마다 실행되는 콜백
   const handleVideoRefChange = useCallback(() => {
-    if (!videoRef.current) {
-      console.log(
-        "videoRef.current is null, skipping blink detector initialization"
-      );
+    if (!videoRef.current || !enabled) {
+      console.log("[Blink] Skipping initialization", {
+        hasVideo: !!videoRef.current,
+        enabled
+      });
       return;
     }
 
@@ -221,6 +241,9 @@ export function useBlinkDetector(videoRef: RefObject<HTMLVideoElement>) {
               windowMin: winMinRef.current,
               windowMax: winMaxRef.current,
               lastCalibratedAt: lastCalibratedAtRef.current,
+              landmarks: null, // 얼굴 없음
+              videoSize: videoEl?.videoWidth && videoEl?.videoHeight ?
+                { width: videoEl.videoWidth, height: videoEl.videoHeight } : null,
             });
             return;
           }
@@ -323,6 +346,16 @@ export function useBlinkDetector(videoRef: RefObject<HTMLVideoElement>) {
             consecutiveFramesRef.current = 0;
           }
 
+          const landmarkCount = lm ? lm.length : 0;
+          const videoSize = videoEl?.videoWidth && videoEl?.videoHeight ?
+            { width: videoEl.videoWidth, height: videoEl.videoHeight } : null;
+
+          console.log("[Blink] Sending landmarks:", {
+            landmarkCount,
+            videoSize,
+            state: newState
+          });
+
           safeSetRes({
             ratioL: rLRef.current,
             ratioR: rRRef.current,
@@ -335,6 +368,8 @@ export function useBlinkDetector(videoRef: RefObject<HTMLVideoElement>) {
             windowMin: winMinRef.current,
             windowMax: winMaxRef.current,
             lastCalibratedAt: lastCalibratedAtRef.current,
+            landmarks: lm, // 랜드마크 데이터 추가
+            videoSize,
           });
         }
       );
@@ -359,12 +394,12 @@ export function useBlinkDetector(videoRef: RefObject<HTMLVideoElement>) {
       meshRef.current?.close();
       meshRef.current = null;
     };
-  }, [initMesh, videoRef]);
+  }, [initMesh, videoRef, enabled]);
 
   useEffect(() => {
     const cleanup = handleVideoRefChange();
     return cleanup;
-  }, []);
+  }, [handleVideoRefChange]);
 
   return res;
 }
