@@ -9,6 +9,7 @@ import { GameUI } from "./GameUI";
 import { VideoDisplay } from "./components/VideoDisplay";
 import { ControlPanel } from "./components/ControlPanel";
 import { GameOverModal } from "./components/GameOverModal";
+import { RevivalGame } from "./components/RevivalGame";
 // import { useMicVAD } from "./hooks/useMicVAD"; // VAD 비활성
 
 // Electron API 타입 선언
@@ -62,11 +63,14 @@ export default function App() {
   const [gameOverScore, setGameOverScore] = useState(0);
   const [gameOverCombo, setGameOverCombo] = useState(0);
 
-  // 모달이 열려 있으면 깜빡임 감지 비활성화
-  const blink = useBlinkDetector(videoRef, started && !showApiInitModal && !showGameOverModal);
+  // 부활 게임 관련 상태
+  const [showRevivalGame, setShowRevivalGame] = useState(false);
 
-  // 시선 감지 (깜빡임 감지와 독립적으로 동작)
-  const gaze = useGazeDetector(videoRef, gazeEnabled && started && !showApiInitModal && !showGameOverModal);
+  // 모달이 열려 있으면 깜빡임 감지 비활성화
+  const blink = useBlinkDetector(videoRef, started && !showApiInitModal && !showGameOverModal && !showRevivalGame);
+
+  // 시선 감지 (깜빡임 감지와 독립적으로 동작, 부활 게임 중에는 항상 활성화)
+  const gaze = useGazeDetector(videoRef, (gazeEnabled || showRevivalGame) && started && !showApiInitModal && !showGameOverModal);
 
   // 게임 로직
   const { gameState, resetGame, togglePause, restoreHeart, loseHeart } =
@@ -83,10 +87,9 @@ export default function App() {
 
   // 게임 오버 모달 핸들러
   const handleContinueGame = () => {
-    console.log("게임을 다시 시작합니다!");
+    console.log("부활 게임을 시작합니다!");
     setShowGameOverModal(false);
-    resetGame(); // 게임을 완전히 리셋 (점수, 콤보, 하트 초기화)
-    // 모든 상태가 초기화되고 새 게임이 시작됨
+    setShowRevivalGame(true); // 부활 게임 시작
   };
 
   const handleEndGame = () => {
@@ -103,6 +106,20 @@ export default function App() {
         window.location.reload();
       }
     }
+  };
+
+  // 부활 게임 핸들러
+  const handleRevivalGameComplete = () => {
+    console.log("부활 게임 완료! 게임을 다시 시작합니다!");
+    setShowRevivalGame(false);
+    resetGame(); // 게임을 완전히 리셋 (점수, 콤보, 하트 초기화)
+    // 모든 상태가 초기화되고 새 게임이 시작됨
+  };
+
+  const handleRevivalGameCancel = () => {
+    console.log("부활 게임을 취소합니다.");
+    setShowRevivalGame(false);
+    setShowGameOverModal(true); // 게임 오버 모달로 되돌아감
   };
 
   // 모달로 인해 강제로 일시정지한 여부 추적 (timeRemaining 감소 중지 목적)
@@ -438,6 +455,14 @@ export default function App() {
         combo={gameOverCombo}
         onContinueGame={handleContinueGame}
         onEndGame={handleEndGame}
+      />
+
+      {/* 부활 게임 */}
+      <RevivalGame
+        isVisible={showRevivalGame}
+        gazeDirection={gaze.direction}
+        onGameComplete={handleRevivalGameComplete}
+        onGameCancel={handleRevivalGameCancel}
       />
 
       {/* 게임 UI */}
