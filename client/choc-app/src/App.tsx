@@ -8,7 +8,17 @@ import { useGameLogic } from "./useGameLogic";
 import { GameUI } from "./GameUI";
 import { VideoDisplay } from "./components/VideoDisplay";
 import { ControlPanel } from "./components/ControlPanel";
+import { GameOverModal } from "./components/GameOverModal";
 // import { useMicVAD } from "./hooks/useMicVAD"; // VAD 비활성
+
+// Electron API 타입 선언
+declare global {
+  interface Window {
+    electron?: {
+      closeApp: () => void;
+    };
+  }
+}
 
 export default function App() {
   // 카메라 관련 로직
@@ -47,20 +57,60 @@ export default function App() {
   // 시선 감지 활성화 여부
   const [gazeEnabled, setGazeEnabled] = useState(false);
 
+  // 게임 오버 관련 상태
+  const [showGameOverModal, setShowGameOverModal] = useState(false);
+  const [gameOverScore, setGameOverScore] = useState(0);
+  const [gameOverCombo, setGameOverCombo] = useState(0);
+
   // 모달이 열려 있으면 깜빡임 감지 비활성화
-  const blink = useBlinkDetector(videoRef, started && !showApiInitModal);
+  const blink = useBlinkDetector(videoRef, started && !showApiInitModal && !showGameOverModal);
 
   // 시선 감지 (깜빡임 감지와 독립적으로 동작)
-  const gaze = useGazeDetector(videoRef, gazeEnabled && started && !showApiInitModal);
+  const gaze = useGazeDetector(videoRef, gazeEnabled && started && !showApiInitModal && !showGameOverModal);
 
   // 게임 로직
   const { gameState, resetGame, togglePause, restoreHeart, loseHeart } =
     useGameLogic(blink.blinks, blink.lastBlinkAt);
 
+  // 게임 오버 감지 및 모달 표시
+  useEffect(() => {
+    if (!gameState.isAlive && !showGameOverModal) {
+      setGameOverScore(gameState.score);
+      setGameOverCombo(gameState.combo);
+      setShowGameOverModal(true);
+    }
+  }, [gameState.isAlive, showGameOverModal, gameState.score, gameState.combo]);
+
+  // 게임 오버 모달 핸들러
+  const handleContinueGame = () => {
+    console.log("게임을 다시 시작합니다!");
+    setShowGameOverModal(false);
+    resetGame(); // 게임을 완전히 리셋 (점수, 콤보, 하트 초기화)
+    // 모든 상태가 초기화되고 새 게임이 시작됨
+  };
+
+  const handleEndGame = () => {
+    console.log("앱을 종료합니다.");
+    setShowGameOverModal(false);
+    // 앱 종료 (Electron 환경에서)
+    if (window.electron && window.electron.closeApp) {
+      window.electron.closeApp();
+    } else {
+      // 웹 환경에서는 창 닫기 시도
+      window.close();
+      // 만약 window.close()가 작동하지 않으면 페이지 새로고침으로 리셋
+      if (!window.closed) {
+        window.location.reload();
+      }
+    }
+  };
+
   // 모달로 인해 강제로 일시정지한 여부 추적 (timeRemaining 감소 중지 목적)
   const modalPausedRef = useRef(false);
   useEffect(() => {
-    if (showApiInitModal) {
+    const shouldPause = showApiInitModal || showGameOverModal;
+
+    if (shouldPause) {
       // 모달 열렸을 때 게임이 실행중이면 일시정지 시키고 표시
       if (!gameState.isPaused) {
         togglePause();
@@ -74,7 +124,7 @@ export default function App() {
       }
     }
     // gameState.isPaused, togglePause는 의존성으로 포함
-  }, [showApiInitModal, gameState.isPaused, togglePause]);
+  }, [showApiInitModal, showGameOverModal, gameState.isPaused, togglePause]);
 
   // 🎤 VAD 상태 (비활성)
   // const vad = useMicVAD(true);
@@ -380,6 +430,15 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 게임 오버 모달 */}
+      <GameOverModal
+        isVisible={showGameOverModal}
+        score={gameOverScore}
+        combo={gameOverCombo}
+        onContinueGame={handleContinueGame}
+        onEndGame={handleEndGame}
+      />
 
       {/* 게임 UI */}
       <GameUI
