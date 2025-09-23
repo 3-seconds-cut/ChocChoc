@@ -11,6 +11,31 @@ import { Camera } from "@mediapipe/camera_utils";
 
 export type GazeDirection = "LEFT" | "RIGHT" | "UP" | "DOWN" | "CENTER" | "NO_FACE" | "EYES_CLOSED";
 
+// ========================================
+// 시선 감지 임계값 설정
+// ========================================
+/**
+ * 시선 방향 분류를 위한 기본 임계값
+ *
+ * 🎯 tau_x, tau_y 조정 가이드:
+ * - 0.1~0.2: 매우 민감 (약간의 눈동자 움직임도 감지)
+ * - 0.2~0.3: 민감 (적당한 눈동자 움직임 감지) ← 현재 설정
+ * - 0.3~0.4: 보통 (일반적인 눈동자 움직임 감지)
+ * - 0.5~0.7: 둔감 (명확한 눈동자 움직임 필요)
+ * - 0.8~1.0: 매우 둔감 (큰 눈동자 움직임 필요)
+ *
+ * 📏 좌표계 설명:
+ * - px, py는 정규화된 홍채 위치 (-2.0 ~ +2.0)
+ * - 음수: LEFT, UP / 양수: RIGHT, DOWN
+ * - CENTER: abs(px) < tau_x AND abs(py) < tau_y
+ */
+const DEFAULT_GAZE_THRESHOLDS = {
+  tau_x: 0.25,  // 좌우 방향 임계값 - 적당한 민감도로 조정
+  tau_y: 0.20,  // 상하 방향 임계값 - 적당한 민감도로 조정
+  ema: 0.4,     // EMA 필터 강도 - 안정성을 위해 조금 높임
+  eyeOpenThreshold: 0.15, // 눈 열림 임계값
+};
+
 export interface GazeResult {
   /** 좌안 홍채 위치 (정규화된 좌표) */
   leftIrisPos: { x: number; y: number };
@@ -75,11 +100,19 @@ function getIrisCentroid(landmarks: { x: number; y: number }[], indices: number[
 }
 
 /** 시선 방향 분류 */
-function classifyGaze(px: number, py: number, tau_x: number = 0.25, tau_y: number = 0.20): GazeDirection {
+function classifyGaze(
+  px: number,
+  py: number,
+  tau_x: number = DEFAULT_GAZE_THRESHOLDS.tau_x,
+  tau_y: number = DEFAULT_GAZE_THRESHOLDS.tau_y
+): GazeDirection {
   const ax = Math.abs(px);
   const ay = Math.abs(py);
 
+  // 중앙 영역 판정: 좌우/상하 모두 임계값 이내면 CENTER
   if (ax < tau_x && ay < tau_y) return "CENTER";
+
+  // 좌우 vs 상하 중 더 큰 변화량을 가진 방향으로 분류
   if (ax >= ay) return px < 0 ? "LEFT" : "RIGHT";
   return py < 0 ? "UP" : "DOWN";
 }
@@ -99,10 +132,11 @@ export function useGazeDetector(
     eyeOpenThreshold?: number;
   }
 ): UseGazeDetectorReturn {
-  const tau_x = options?.tau_x ?? 0.7;
-  const tau_y = options?.tau_y ?? 0.55;
-  const emaAlpha = options?.ema ?? 0.5;
-  const eyeOpenThreshold = options?.eyeOpenThreshold ?? 0.18;
+  // 옵션이 제공되지 않으면 기본값 사용
+  const tau_x = options?.tau_x ?? DEFAULT_GAZE_THRESHOLDS.tau_x;
+  const tau_y = options?.tau_y ?? DEFAULT_GAZE_THRESHOLDS.tau_y;
+  const emaAlpha = options?.ema ?? DEFAULT_GAZE_THRESHOLDS.ema;
+  const eyeOpenThreshold = options?.eyeOpenThreshold ?? DEFAULT_GAZE_THRESHOLDS.eyeOpenThreshold;
 
   const [result, setResult] = useState<GazeResult>({
     leftIrisPos: { x: 0, y: 0 },
