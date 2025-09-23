@@ -7,7 +7,6 @@ import {
   useCallback,
 } from "react";
 import { FaceMesh } from "@mediapipe/face_mesh";
-import { Camera } from "@mediapipe/camera_utils";
 
 export type GazeDirection = "LEFT" | "RIGHT" | "UP" | "DOWN" | "CENTER" | "NO_FACE" | "EYES_CLOSED";
 
@@ -151,7 +150,6 @@ export function useGazeDetector(
     isReady: false,
   });
 
-  const camRef = useRef<Camera | null>(null);
   const meshRef = useRef<FaceMesh | null>(null);
 
   // EMA 필터 상태
@@ -187,17 +185,29 @@ export function useGazeDetector(
   // FaceMesh 초기화
   const initMesh = useMemo(
     () => async () => {
-      const fm = new FaceMesh({
-        locateFile: (file) =>
-          `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
-      });
-      fm.setOptions({
-        maxNumFaces: 1,
-        refineLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5,
-      });
-      meshRef.current = fm;
+      try {
+        console.log("[Gaze] Initializing FaceMesh...");
+        const fm = new FaceMesh({
+          locateFile: (file) => {
+            const url = `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+            console.log("[Gaze] Loading FaceMesh file:", url);
+            return url;
+          },
+        });
+
+        fm.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.3, // 더 관대한 감지 임계값
+          minTrackingConfidence: 0.3,  // 더 관대한 추적 임계값
+        });
+
+        console.log("[Gaze] FaceMesh initialized successfully");
+        meshRef.current = fm;
+      } catch (error) {
+        console.error("[Gaze] FaceMesh initialization failed:", error);
+        throw error;
+      }
     },
     []
   );
@@ -225,7 +235,15 @@ export function useGazeDetector(
 
   // videoRef 변경 감지 및 초기화
   const handleVideoRefChange = useCallback(() => {
+    console.log("[Gaze] handleVideoRefChange called", {
+      videoRefExists: !!videoRef.current,
+      enabled,
+      videoWidth: videoRef.current?.videoWidth,
+      videoHeight: videoRef.current?.videoHeight
+    });
+
     if (!videoRef.current || !enabled) {
+      console.log("[Gaze] Gaze detection disabled or no video ref");
       return;
     }
 
@@ -249,6 +267,7 @@ export function useGazeDetector(
 
         // 얼굴이 감지되지 않은 경우
         if (!landmarks) {
+          console.log("[Gaze] No face detected in frame");
           safeSetResult({
             leftIrisPos: { x: 0, y: 0 },
             rightIrisPos: { x: 0, y: 0 },
@@ -263,6 +282,8 @@ export function useGazeDetector(
           });
           return;
         }
+
+        console.log("[Gaze] Face detected, landmarks count:", landmarks.length);
 
         const videoWidth = videoEl.videoWidth || 1280;
         const videoHeight = videoEl.videoHeight || 720;
@@ -338,23 +359,62 @@ export function useGazeDetector(
         });
       });
 
-      // 카메라 프레임 → FaceMesh로 보내기
-      camRef.current = new Camera(videoEl, {
-        onFrame: async () => {
-          if (!meshRef.current) return;
-          await meshRef.current.send({ image: videoEl });
-        },
-        width: 1280,
-        height: 720,
-      });
+      // 기존 비디오 스트림 사용하여 FaceMesh로 보내기
+      const processFrame = async () => {
+        if (cancelled || !meshRef.current) {
+          return;
+        }
 
-      if (!cancelled) camRef.current.start();
+        if (!videoEl.videoWidth || !videoEl.videoHeight) {
+          console.log("[Gaze] Video dimensions not ready:", videoEl.videoWidth, videoEl.videoHeight);
+          // 다음 프레임에서 다시 시도
+          if (!cancelled) {
+            requestAnimationFrame(processFrame);
+          }
+          return;
+        }
+
+        try {
+          await meshRef.current.send({ image: videoEl });
+        } catch (error) {
+          console.warn("[Gaze] FaceMesh processing error:", error);
+        }
+
+        // 다음 프레임 예약
+        if (!cancelled) {
+          requestAnimationFrame(processFrame);
+        }
+      };
+
+      // 비디오가 준비되면 프레임 처리 시작
+      console.log("[Gaze] Video readyState:", videoEl.readyState, "dimensions:", videoEl.videoWidth, "x", videoEl.videoHeight);
+
+      if (videoEl.readyState >= 2 && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) { // HAVE_CURRENT_DATA
+        console.log("[Gaze] Starting FaceMesh with existing video stream");
+        processFrame();
+      } else {
+        console.log("[Gaze] Waiting for video to load...");
+        const onLoadedData = () => {
+          console.log("[Gaze] Video loaded, starting FaceMesh. Dimensions:", videoEl.videoWidth, "x", videoEl.videoHeight);
+          processFrame();
+          videoEl.removeEventListener('loadeddata', onLoadedData);
+        };
+        videoEl.addEventListener('loadeddata', onLoadedData);
+
+        // 추가적인 이벤트 리스너들
+        const onCanPlay = () => {
+          console.log("[Gaze] Video can play, dimensions:", videoEl.videoWidth, "x", videoEl.videoHeight);
+          if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+            processFrame();
+            videoEl.removeEventListener('canplay', onCanPlay);
+          }
+        };
+        videoEl.addEventListener('canplay', onCanPlay);
+      }
     })();
 
     return () => {
       cancelled = true;
-      camRef.current?.stop();
-      camRef.current = null;
       meshRef.current?.close();
       meshRef.current = null;
     };

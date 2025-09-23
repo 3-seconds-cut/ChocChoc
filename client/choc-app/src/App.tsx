@@ -89,7 +89,21 @@ export default function App() {
   const handleContinueGame = () => {
     console.log("부활 게임을 시작합니다!");
     setShowGameOverModal(false);
-    setShowRevivalGame(true); // 부활 게임 시작
+
+    // 부활 게임을 위해 카메라와 얼굴 표시 강제 활성화
+    console.log("현재 카메라 상태:", { state, ready });
+
+    // 카메라가 준비되지 않았으면 강제로 시작
+    if (state !== "ready") {
+      console.log("카메라 재시작 중...");
+      startCamera();
+    }
+
+    // 얼굴 표시 활성화
+    setShowFace(true);
+
+    // 바로 부활 게임 시작
+    setShowRevivalGame(true);
   };
 
   const handleEndGame = () => {
@@ -463,6 +477,9 @@ export default function App() {
         gazeDirection={gaze.direction}
         onGameComplete={handleRevivalGameComplete}
         onGameCancel={handleRevivalGameCancel}
+        cameraReady={state === "ready" && ready}
+        gazeReady={gaze.isReady}
+        videoElement={videoRef.current}
       />
 
       {/* 게임 UI */}

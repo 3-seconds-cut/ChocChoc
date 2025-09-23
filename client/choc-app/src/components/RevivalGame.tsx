@@ -9,6 +9,9 @@ interface RevivalGameProps {
   gazeDirection: GazeDirection;
   onGameComplete: () => void;
   onGameCancel: () => void;
+  cameraReady?: boolean;
+  gazeReady?: boolean;
+  videoElement?: HTMLVideoElement | null;
 }
 
 // 부활 게임 시퀀스: 좌 → 우 → 좌 → 우
@@ -150,22 +153,23 @@ const ButtonContainer = styled.div`
   justify-content: center;
 `;
 
-const Button = styled.button<{ variant: 'primary' | 'secondary' }>`
+const Button = styled.button<{ variant: 'primary' | 'secondary'; disabled?: boolean }>`
   padding: 12px 24px;
   border: none;
   border-radius: 10px;
   font-size: 1rem;
   font-weight: bold;
-  cursor: pointer;
+  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   transition: all 0.3s ease;
   min-width: 120px;
+  opacity: ${props => props.disabled ? 0.5 : 1};
 
   ${props => props.variant === 'primary' ? `
     background: linear-gradient(135deg, #4caf50, #66bb6a);
     color: white;
     box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
 
-    &:hover {
+    &:hover:not(:disabled) {
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
     }
@@ -174,13 +178,13 @@ const Button = styled.button<{ variant: 'primary' | 'secondary' }>`
     color: #e8e8e8;
     border: 2px solid rgba(255, 255, 255, 0.3);
 
-    &:hover {
+    &:hover:not(:disabled) {
       background: rgba(255, 255, 255, 0.2);
       transform: translateY(-1px);
     }
   `}
 
-  &:active {
+  &:active:not(:disabled) {
     transform: translateY(0);
   }
 `;
@@ -210,6 +214,9 @@ export const RevivalGame: React.FC<RevivalGameProps> = ({
   gazeDirection,
   onGameComplete,
   onGameCancel,
+  cameraReady = true,
+  gazeReady = false,
+  videoElement = null,
 }) => {
   const [currentStep, setCurrentStep] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -282,6 +289,10 @@ export const RevivalGame: React.FC<RevivalGameProps> = ({
   };
 
   const getCurrentInstruction = () => {
+    if (gazeDirection === "NO_FACE") {
+      return "📷 카메라에 얼굴이 보이도록 위치를 조정해주세요";
+    }
+
     if (!isGameStarted) {
       return "시작 버튼을 눌러 눈 운동을 시작하세요!";
     }
@@ -309,6 +320,24 @@ export const RevivalGame: React.FC<RevivalGameProps> = ({
                      getDirectionText(gazeDirection)}
         </CurrentDirection>
 
+        {/* 디버깅 정보 */}
+        <div style={{
+          fontSize: '0.9rem',
+          color: '#aaa',
+          marginTop: '10px',
+          padding: '10px',
+          backgroundColor: 'rgba(0,0,0,0.3)',
+          borderRadius: '8px',
+          textAlign: 'left'
+        }}>
+          <div>📊 상태 정보:</div>
+          <div>• 카메라 준비: {cameraReady ? '✅' : '❌'}</div>
+          <div>• 시선 감지: {gazeReady ? '✅' : '❌'}</div>
+          <div>• 얼굴 인식: {gazeDirection !== "NO_FACE" ? '✅' : '❌'}</div>
+          <div>• 비디오 크기: {videoElement ? `${videoElement.videoWidth}x${videoElement.videoHeight}` : '미확인'}</div>
+          <div>• 비디오 상태: {videoElement ? (videoElement.readyState >= 2 ? '재생중' : '로딩중') : '없음'}</div>
+        </div>
+
         <ProgressContainer>
           {REVIVAL_SEQUENCE.map((direction, index) => (
             <div key={index}>
@@ -330,7 +359,11 @@ export const RevivalGame: React.FC<RevivalGameProps> = ({
         <ButtonContainer>
           {!isGameStarted ? (
             <>
-              <Button variant="primary" onClick={handleStartGame}>
+              <Button
+                variant="primary"
+                onClick={handleStartGame}
+                disabled={gazeDirection === "NO_FACE"}
+              >
                 🚀 시작하기
               </Button>
               <Button variant="secondary" onClick={onGameCancel}>
