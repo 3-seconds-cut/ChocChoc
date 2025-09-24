@@ -2,21 +2,20 @@
 import React, { useState, useEffect } from "react";
 import styled, { keyframes } from "styled-components";
 
-export type GazeDirection = "LEFT" | "RIGHT" | "UP" | "DOWN" | "CENTER" | "NO_FACE" | "EYES_CLOSED";
+export type BlinkState = "UNKNOWN" | "OPEN" | "CLOSING" | "CLOSED" | "OPENING";
 
 interface RevivalGameProps {
   isVisible: boolean;
-  gazeDirection: GazeDirection;
+  blinkState: BlinkState;
   onGameComplete: () => void;
   onGameCancel: () => void;
   cameraReady?: boolean;
-  gazeReady?: boolean;
   videoElement?: HTMLVideoElement | null;
 }
 
-// 부활 게임 시퀀스: 좌 → 우 → 좌 → 우
-const REVIVAL_SEQUENCE: GazeDirection[] = ["LEFT", "RIGHT", "LEFT", "RIGHT"];
-const HOLD_DURATION = 1500; // 각 방향을 1.5초간 유지해야 함
+// 부활 게임: 5초 눈감기를 2번 반복
+const BLINK_CYCLES = 2;
+const HOLD_DURATION = 5000; // 5초
 const PROGRESS_UPDATE_INTERVAL = 50; // 50ms마다 진행률 업데이트
 
 // 애니메이션
@@ -77,22 +76,28 @@ const Instructions = styled.p`
 const ProgressContainer = styled.div`
   display: flex;
   justify-content: center;
-  gap: 20px;
+  gap: 30px;
   margin: 30px 0;
   flex-wrap: wrap;
 `;
 
-const DirectionCircle = styled.div<{
+const CycleContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+`;
+
+const ProgressCircle = styled.div<{
   isActive: boolean;
   isCompleted: boolean;
   progress: number;
-  direction: GazeDirection;
 }>`
   position: relative;
-  width: 80px;
-  height: 80px;
+  width: 100px;
+  height: 100px;
   border-radius: 50%;
-  border: 3px solid ${props =>
+  border: 4px solid ${props =>
     props.isCompleted ? '#4caf50' :
     props.isActive ? '#ffd93d' :
     'rgba(255, 255, 255, 0.3)'
@@ -105,7 +110,7 @@ const DirectionCircle = styled.div<{
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.5rem;
+  font-size: 2rem;
   font-weight: bold;
   transition: all 0.3s ease;
   animation: ${props => props.isActive ? pulse : 'none'} 1s infinite;
@@ -117,33 +122,44 @@ const DirectionCircle = styled.div<{
   &::before {
     content: '';
     position: absolute;
-    top: -3px;
-    left: -3px;
-    right: -3px;
-    bottom: -3px;
+    top: -4px;
+    left: -4px;
+    right: -4px;
+    bottom: -4px;
     border-radius: 50%;
     background: conic-gradient(
       from 0deg,
-      ${props => props.isActive ? '#4caf50' : 'transparent'} 0deg,
-      ${props => props.isActive ? '#4caf50' : 'transparent'} ${props => props.progress * 3.6}deg,
+      ${props => props.isActive || props.isCompleted ? '#4caf50' : 'transparent'} 0deg,
+      ${props => props.isActive || props.isCompleted ? '#4caf50' : 'transparent'} ${props => props.progress * 3.6}deg,
       transparent ${props => props.progress * 3.6}deg
     );
     z-index: -1;
   }
 `;
 
-const DirectionLabel = styled.div<{ direction: GazeDirection }>`
-  margin-top: 8px;
-  font-size: 0.9rem;
-  color: #e8e8e8;
+const CycleLabel = styled.div<{ isActive: boolean; isCompleted: boolean }>`
+  font-size: 1rem;
+  color: ${props =>
+    props.isCompleted ? '#4caf50' :
+    props.isActive ? '#ffd93d' :
+    '#e8e8e8'
+  };
   font-weight: 600;
 `;
 
-const CurrentDirection = styled.div`
-  font-size: 1.5rem;
+const BlinkStatusDisplay = styled.div<{ blinkState: BlinkState }>`
+  font-size: 1.8rem;
   margin: 20px 0;
-  color: #ffd93d;
+  color: ${props =>
+    props.blinkState === "CLOSED" ? '#4caf50' :
+    props.blinkState === "OPEN" ? '#ffd93d' :
+    '#ff6b6b'
+  };
   font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
 `;
 
 const ButtonContainer = styled.div`
@@ -189,74 +205,72 @@ const Button = styled.button<{ variant: 'primary' | 'secondary'; disabled?: bool
   }
 `;
 
-const getDirectionEmoji = (direction: GazeDirection): string => {
-  switch (direction) {
-    case "LEFT": return "👈";
-    case "RIGHT": return "👉";
-    case "UP": return "👆";
-    case "DOWN": return "👇";
-    default: return "👁️";
+const getBlinkStateEmoji = (blinkState: BlinkState): string => {
+  switch (blinkState) {
+    case "CLOSED": return "😴";
+    case "OPEN": return "👁️";
+    case "CLOSING": return "😑";
+    case "OPENING": return "😊";
+    default: return "❓";
   }
 };
 
-const getDirectionText = (direction: GazeDirection): string => {
-  switch (direction) {
-    case "LEFT": return "좌";
-    case "RIGHT": return "우";
-    case "UP": return "상";
-    case "DOWN": return "하";
-    default: return "중앙";
+const getBlinkStateText = (blinkState: BlinkState): string => {
+  switch (blinkState) {
+    case "CLOSED": return "눈 감음 (좋아요!)";
+    case "OPEN": return "눈 뜸";
+    case "CLOSING": return "눈 감는 중";
+    case "OPENING": return "눈 뜨는 중";
+    default: return "상태 인식 중";
   }
 };
 
 export const RevivalGame: React.FC<RevivalGameProps> = ({
   isVisible,
-  gazeDirection,
+  blinkState,
   onGameComplete,
   onGameCancel,
   cameraReady = true,
-  gazeReady = false,
   videoElement = null,
 }) => {
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentCycle, setCurrentCycle] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isGameStarted, setIsGameStarted] = useState(false);
-  const [completedSteps, setCompletedSteps] = useState<boolean[]>(new Array(REVIVAL_SEQUENCE.length).fill(false));
+  const [completedCycles, setCompletedCycles] = useState<boolean[]>(new Array(BLINK_CYCLES).fill(false));
 
   // 게임 시작/리셋
   useEffect(() => {
     if (isVisible) {
-      setCurrentStep(0);
+      setCurrentCycle(0);
       setProgress(0);
       setIsGameStarted(false);
-      setCompletedSteps(new Array(REVIVAL_SEQUENCE.length).fill(false));
+      setCompletedCycles(new Array(BLINK_CYCLES).fill(false));
     }
   }, [isVisible]);
 
-  // 시선 방향 감지 및 진행률 업데이트
+  // 눈깜빡임 상태 감지 및 진행률 업데이트
   useEffect(() => {
-    if (!isVisible || !isGameStarted || currentStep >= REVIVAL_SEQUENCE.length) return;
+    if (!isVisible || !isGameStarted || currentCycle >= BLINK_CYCLES) return;
 
-    const targetDirection = REVIVAL_SEQUENCE[currentStep];
-    const isCorrectDirection = gazeDirection === targetDirection;
-
+    const isEyesClosed = blinkState === "CLOSED";
     let progressTimer: NodeJS.Timeout;
 
-    if (isCorrectDirection) {
-      // 올바른 방향을 보고 있을 때 진행률 증가
+    if (isEyesClosed) {
+      // 눈이 감혀있을 때 진행률 증가
       progressTimer = setInterval(() => {
         setProgress(prev => {
-          const newProgress = prev + (100 / (HOLD_DURATION / PROGRESS_UPDATE_INTERVAL));
+          const incrementPerInterval = (100 / (HOLD_DURATION / PROGRESS_UPDATE_INTERVAL));
+          const newProgress = prev + incrementPerInterval;
 
           if (newProgress >= 100) {
-            // 단계 완료
-            setCompletedSteps(prev => {
+            // 사이클 완료
+            setCompletedCycles(prev => {
               const newCompleted = [...prev];
-              newCompleted[currentStep] = true;
+              newCompleted[currentCycle] = true;
               return newCompleted;
             });
 
-            setCurrentStep(prev => prev + 1);
+            setCurrentCycle(prev => prev + 1);
             setProgress(0);
 
             return 0;
@@ -266,43 +280,42 @@ export const RevivalGame: React.FC<RevivalGameProps> = ({
         });
       }, PROGRESS_UPDATE_INTERVAL);
     } else {
-      // 잘못된 방향을 보고 있을 때 진행률 감소
+      // 눈이 열려있을 때 진행률 감소
       progressTimer = setInterval(() => {
-        setProgress(prev => Math.max(0, prev - 2));
+        setProgress(prev => Math.max(0, prev - 1));
       }, PROGRESS_UPDATE_INTERVAL);
     }
 
     return () => clearInterval(progressTimer);
-  }, [isVisible, isGameStarted, currentStep, gazeDirection]);
+  }, [isVisible, isGameStarted, currentCycle, blinkState]);
 
   // 게임 완료 체크
   useEffect(() => {
-    if (currentStep >= REVIVAL_SEQUENCE.length && isGameStarted) {
+    if (currentCycle >= BLINK_CYCLES && isGameStarted) {
       setTimeout(() => {
         onGameComplete();
       }, 1000);
     }
-  }, [currentStep, isGameStarted, onGameComplete]);
+  }, [currentCycle, isGameStarted, onGameComplete]);
 
   const handleStartGame = () => {
     setIsGameStarted(true);
   };
 
   const getCurrentInstruction = () => {
-    if (gazeDirection === "NO_FACE") {
+    if (blinkState === "UNKNOWN") {
       return "📷 카메라에 얼굴이 보이도록 위치를 조정해주세요";
     }
 
     if (!isGameStarted) {
-      return "시작 버튼을 눌러 눈 운동을 시작하세요!";
+      return "시작 버튼을 눌러 눈 감기 운동을 시작하세요!";
     }
 
-    if (currentStep >= REVIVAL_SEQUENCE.length) {
-      return "🎉 훌륭합니다! 눈 운동이 완료되었습니다!";
+    if (currentCycle >= BLINK_CYCLES) {
+      return "🎉 훌륭합니다! 눈 감기 운동이 완료되었습니다!";
     }
 
-    const targetDirection = REVIVAL_SEQUENCE[currentStep];
-    return `${getDirectionEmoji(targetDirection)} ${getDirectionText(targetDirection)}쪽을 바라보세요`;
+    return `😴 ${currentCycle + 1}차 눈감기: 눈을 꼭 감고 5초간 유지하세요`;
   };
 
   if (!isVisible) return null;
@@ -310,15 +323,13 @@ export const RevivalGame: React.FC<RevivalGameProps> = ({
   return (
     <GameOverlay isVisible={isVisible}>
       <GameContainer>
-        <Title>👁️ 부활을 위한 눈 운동</Title>
+        <Title>😴 부활을 위한 눈 감기 운동</Title>
 
         <Instructions>{getCurrentInstruction()}</Instructions>
 
-        <CurrentDirection>
-          현재 시선: {gazeDirection === "NO_FACE" ? "얼굴 인식 안됨" :
-                     gazeDirection === "EYES_CLOSED" ? "눈 감음" :
-                     getDirectionText(gazeDirection)}
-        </CurrentDirection>
+        <BlinkStatusDisplay blinkState={blinkState}>
+          {getBlinkStateEmoji(blinkState)} {getBlinkStateText(blinkState)}
+        </BlinkStatusDisplay>
 
         {/* 디버깅 정보 */}
         <div style={{
@@ -332,28 +343,31 @@ export const RevivalGame: React.FC<RevivalGameProps> = ({
         }}>
           <div>📊 상태 정보:</div>
           <div>• 카메라 준비: {cameraReady ? '✅' : '❌'}</div>
-          <div>• 시선 감지: {gazeReady ? '✅' : '❌'}</div>
-          <div>• 얼굴 인식: {gazeDirection !== "NO_FACE" ? '✅' : '❌'}</div>
+          <div>• 얼굴 인식: {blinkState !== "UNKNOWN" ? '✅' : '❌'}</div>
+          <div>• 눈 깜빡임 상태: {blinkState}</div>
           <div>• 비디오 크기: {videoElement ? `${videoElement.videoWidth}x${videoElement.videoHeight}` : '미확인'}</div>
           <div>• 비디오 상태: {videoElement ? (videoElement.readyState >= 2 ? '재생중' : '로딩중') : '없음'}</div>
           <div>• 실제 준비: {(videoElement && videoElement.videoWidth > 0) ? '✅' : '❌'}</div>
         </div>
 
         <ProgressContainer>
-          {REVIVAL_SEQUENCE.map((direction, index) => (
-            <div key={index}>
-              <DirectionCircle
-                isActive={isGameStarted && index === currentStep}
-                isCompleted={completedSteps[index]}
-                progress={index === currentStep ? progress : (completedSteps[index] ? 100 : 0)}
-                direction={direction}
+          {Array.from({ length: BLINK_CYCLES }, (_, index) => (
+            <CycleContainer key={index}>
+              <ProgressCircle
+                isActive={isGameStarted && index === currentCycle}
+                isCompleted={completedCycles[index]}
+                progress={index === currentCycle ? progress : (completedCycles[index] ? 100 : 0)}
               >
-                {getDirectionEmoji(direction)}
-              </DirectionCircle>
-              <DirectionLabel direction={direction}>
-                {getDirectionText(direction)}
-              </DirectionLabel>
-            </div>
+                😴
+              </ProgressCircle>
+              <CycleLabel
+                isActive={isGameStarted && index === currentCycle}
+                isCompleted={completedCycles[index]}
+              >
+                {index + 1}차 눈감기
+                {completedCycles[index] && ' ✓'}
+              </CycleLabel>
+            </CycleContainer>
           ))}
         </ProgressContainer>
 
@@ -363,7 +377,7 @@ export const RevivalGame: React.FC<RevivalGameProps> = ({
               <Button
                 variant="primary"
                 onClick={handleStartGame}
-                disabled={gazeDirection === "NO_FACE"}
+                disabled={blinkState === "UNKNOWN"}
               >
                 🚀 시작하기
               </Button>
