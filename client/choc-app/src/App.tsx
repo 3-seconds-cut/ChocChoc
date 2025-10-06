@@ -8,6 +8,7 @@ import { GameUI } from "./GameUI";
 import { VideoDisplay } from "./components/VideoDisplay";
 import { ControlPanel } from "./components/ControlPanel";
 // import { useMicVAD } from "./hooks/useMicVAD"; // VAD 비활성
+import { useInit } from "./hooks/useInit";
 
 export default function App() {
   // 카메라 관련 로직
@@ -38,15 +39,6 @@ export default function App() {
   // 앱 시작 전 사용자가 'API 키 등록 여부'를 선택할 때까지
   // 감지/카메라 초기화 같은 부하작업은 실행되지 않도록 플래그를 사용합니다.
   const [showInitModal, setShowInitModal] = useState(true); // 초기 모달 표시 상태
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false); // API Key 입력 모달 표시 상태
-  const [hasServerApiKey, setHasServerApiKey] = useState(false); // 서버에 API Key 존재 여부
-  const [tempApiKey, setTempApiKey] = useState(""); // 입력용 임시 상태
-
-  // 사용자명 등록 모달 관련 상태 (최초 실행 시 서버/로컬에 없으면 입력)
-  const [showUserModal, setShowUserModal] = useState(false);
-  const [tempUserName, setTempUserName] = useState("");
-  // server-side user info
-  const [userInfo, setUserInfo] = useState<any | null>(null);
 
   // 최초 설정 모달이 열려 있으면 깜빡임 감지 비활성화
   const blink = useBlinkDetector(videoRef, !showInitModal);
@@ -83,6 +75,39 @@ export default function App() {
 
   const isBlinking = blink.state === "CLOSED" || blink.state === "CLOSING";
 
+  // CLOSED → OPEN 전환 시 타임스탬프 기록
+  useEffect(() => {
+    if (prevBlinkState.current === "CLOSED" && blink.state === "OPEN") {
+      setEvents((prev) => [...prev, new Date().toISOString()]);
+    }
+    prevBlinkState.current = blink.state;
+  }, [blink.state]);
+
+  // 서버 URL
+  const API_BASE =
+    (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
+
+  // 초기화 훅: 서버로부터 사용자 정보 및 API Key 상태 확인/조작
+  const {
+    userInfo,
+    hasServerApiKey,
+    showUserModal,
+    showApiKeyModal,
+    tempUserName,
+    tempApiKey,
+    setTempUserName,
+    setTempApiKey,
+    setShowUserModal,
+    setShowApiKeyModal,
+    handleUserSave,
+    handleApiKeySave,
+    handleApiKeyClear,
+  } = useInit(API_BASE, () => {
+    // onReady: 양쪽(사용자명 + 서버 API 키) 준비되면 앱 시작
+    setShowInitModal(false);
+    // started 상태를 관리하는 로직이 App에 있으면 setStarted(true) 호출 등으로 연결
+  });
+
   // 카메라 표시 토글 (스트림은 유지)
   const toggleCamera = () => {
     if (showFace) {
@@ -105,10 +130,6 @@ export default function App() {
     }
     prevBlinkState.current = blink.state;
   }, [blink.state]);
-
-  // 서버 URL
-  const API_BASE =
-    (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
 
   // 데이터 서버로 전송
   const sendBlinkData = async () => {
@@ -157,161 +178,11 @@ export default function App() {
 
   // 전송 후 즉시 분석결과 조회
   const sendAndFetch = async () => {
-    if (!apiKey) {
+    if (!hasServerApiKey) {
       console.log("API Key is required.");
     }
     const ok = await sendBlinkData();
     if (ok) await fetchProcessed();
-  };
-
-  // HUD 표시 문자열
-  const hudText = (() => {
-    const avg = isFinite(blink.avgRatio) ? blink.avgRatio : 0;
-    const min = isFinite(blink.windowMin) ? blink.windowMin : 0;
-    const max = isFinite(blink.windowMax) ? blink.windowMax : 0;
-    const lastTs = blink.lastCalibratedAt
-      ? new Date(blink.lastCalibratedAt).toLocaleTimeString()
-      : "-";
-    return `평균: ${avg.toFixed(3)} | 임계값: 감음<${blink.CLOSE_T.toFixed(
-      2
-    )} / 뜸>${blink.OPEN_T.toFixed(2)} | 최솟값: ${min.toFixed(
-      3
-    )} / 최댓값: ${max.toFixed(3)} | 최근 갱신: ${lastTs}`;
-  })();
-
-  // 서버에 API Key 존재 여부 확인
-  const fetchHasApiKey = async (userId: string) => {
-    try {
-      const res = await fetch(
-        `${API_BASE}/has-apikey?user_id=${encodeURIComponent(userId)}`,
-        {
-          method: "GET",
-        }
-      );
-      if (!res.ok) return false;
-      const json = await res.json(); // { has_api_key: true/false }
-      return Boolean(json?.has_api_key);
-    } catch (e) {
-      console.error("fetchHasApiKey failed", e);
-      return false;
-    }
-  };
-
-  // register-user (calls server; server will ignore if user exists)
-  const registerUser = async (id: string, name?: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/register-user`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: String(id), name: name ?? "" }),
-      });
-      if (!res.ok) {
-        console.warn("register-user failed:", res.status);
-        return null;
-      }
-      const json = await res.json();
-      const savedId = json?.user?.id ?? id;
-      localStorage.setItem("userId", String(savedId));
-      if (!json?.user?.name && name && name !== "") {
-        localStorage.setItem("userName", String(json.user.name));
-      }
-      return json?.user ?? null;
-    } catch (e) {
-      console.error("registerUser error:", e);
-      return null;
-    }
-  };
-
-  // fetchUserInfo: returns fetched info and also sets userInfo state
-  const fetchUserInfo = async (userId: string) => {
-    try {
-      const res = await fetch(
-        `${API_BASE}/get-user-status?user_id=${encodeURIComponent(userId)}`,
-        { method: "POST" }
-      );
-      if (!res.ok) return null;
-      const status = await res.json();
-      const res2 = await fetch(
-        `${API_BASE}/get-user-honor?user_id=${encodeURIComponent(userId)}`,
-        { method: "POST" }
-      );
-      const honor = res2.ok ? await res2.json() : null;
-      const info = { status, honor };
-      setUserInfo(info);
-      // persist name if present
-      if (status?.payload?.name) {
-        localStorage.setItem("userName", String(status.payload.name));
-      }
-      return info;
-    } catch (e) {
-      console.error("fetchUserInfo failed", e);
-      return null;
-    }
-  };
-
-  // initial check on mount: ensure user exists on server and apiKey presence
-  useEffect(() => {
-    (async () => {
-      const uid = localStorage.getItem("userId") ?? "1";
-      // try to fetch user info first
-      const info = await fetchUserInfo(String(uid));
-      const serverName = info?.status?.payload?.name;
-      // if server has no name, ask user to input
-      if (!serverName || serverName === "") {
-        setTempUserName(serverName ?? "");
-        setShowUserModal(true);
-      }
-      // 서버에 API Key가 등록되어 있는지 확인
-      const hasKey = await fetchHasApiKey(String(uid));
-      setHasServerApiKey(hasKey);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleApiKeySave = async () => {
-    // 서버에 API Key 전달(서버가 유효성 검사/보관을 담당)
-    try {
-      const res = await fetch(`${API_BASE}/register-apikey`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ api_key: tempApiKey, user_id: localStorage.getItem("userId") ?? "1" }),
-      });
-      if (!res.ok) throw new Error("API Key 등록 실패");
-      // 등록 성공 시 로컬에 저장하지 않음 — 서버에만 보관
-      setHasServerApiKey(true)
-      setShowApiKeyModal(false)
-      setTempApiKey("");
-    } catch (e) {
-      alert("서버에 API Key 등록 중 오류가 발생했습니다.");
-      console.error(e);
-    }
-  };
-
-  const handleApiKeyClear = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/clear-apikey`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-       body: JSON.stringify({ user_id: localStorage.getItem("userId") ?? "1" }),
-      });
-      if (!res.ok) throw new Error("API Key 삭제 실패");
-      // 삭제 성공 시 로컬 상태 갱신
-      setHasServerApiKey(false);
-    } catch (e) {
-      alert("서버에 API Key 등록 중 오류가 발생했습니다.");
-      console.error(e);
-    }
-  };
-
-  // user save handler: call register-user and update state
-  const handleUserSave = async () => {
-    const uid = localStorage.getItem("userId") ?? "1";
-    const created = await registerUser(String(uid), tempUserName.trim());
-    if (created) {
-      // refresh server info
-      await fetchUserInfo(String(uid));
-    }
-    setShowUserModal(false);
   };
 
   // render user modal (입력/저장)
@@ -439,8 +310,8 @@ export default function App() {
         </div>
       )}
 
-      {/* API Key 입력 모달 */}
-      {showApiKeyModal && (
+      {/* API Key 입력 모달 (useInit 훅에서 제공) */}
+      {!showUserModal && showApiKeyModal && (
         <div
           style={{
             position: "fixed",
@@ -568,12 +439,8 @@ export default function App() {
           onStopCamera={stopCamera}
           onStartCamera={() => startCamera()}
           hasApiKey={hasServerApiKey}
-          onOpenApiKeyModal={() => {
-            setShowApiKeyModal(true); // 모달 열기
-          }}
-          onClearApiKey={() => {
-            handleApiKeyClear(); // 서버에 API Key 삭제 요청
-          }}
+          onOpenApiKeyModal={() => setShowApiKeyModal(true)}
+          onClearApiKey={() => handleApiKeyClear()}
         />
       )}
 
