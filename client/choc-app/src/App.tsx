@@ -36,12 +36,10 @@ export default function App() {
 
   // 깜빡임 감지 (초기화 여부에 따라 활성화)
   // 앱 시작 전 사용자가 'API 키 등록 여부'를 선택할 때까지
-  // 감지/카메라 초기화 같은 부하작업은 실행되지 않도록 `started` 플래그를 사용합니다.
-  const [started, setStarted] = useState(false);
-  const [showApiInitModal, setShowApiInitModal] = useState(true);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  // API Key는 로컬에 저장하지 않고 서버에 보관함
-  const [hasServerApiKey, setHasServerApiKey] = useState(false);
+  // 감지/카메라 초기화 같은 부하작업은 실행되지 않도록 플래그를 사용합니다.
+  const [showInitModal, setShowInitModal] = useState(true); // 초기 모달 표시 상태
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false); // API Key 입력 모달 표시 상태
+  const [hasServerApiKey, setHasServerApiKey] = useState(false); // 서버에 API Key 존재 여부
   const [tempApiKey, setTempApiKey] = useState(""); // 입력용 임시 상태
   const [apiKey, setApiKey] = useState<string | null>(null);
 
@@ -51,31 +49,12 @@ export default function App() {
   // server-side user info
   const [userInfo, setUserInfo] = useState<any | null>(null);
 
-  // 모달이 열려 있으면 깜빡임 감지 비활성화
-  const blink = useBlinkDetector(videoRef, started && !showApiInitModal);
+  // 최초 설정 모달이 열려 있으면 깜빡임 감지 비활성화
+  const blink = useBlinkDetector(videoRef, !showInitModal);
 
   // 게임 로직
   const { gameState, resetGame, togglePause, restoreHeart, loseHeart } =
     useGameLogic(blink.blinks, blink.lastBlinkAt);
-
-  // 모달로 인해 강제로 일시정지한 여부 추적 (timeRemaining 감소 중지 목적)
-  const modalPausedRef = useRef(false);
-  useEffect(() => {
-    if (showApiInitModal) {
-      // 모달 열렸을 때 게임이 실행중이면 일시정지 시키고 표시
-      if (!gameState.isPaused) {
-        togglePause();
-        modalPausedRef.current = true;
-      }
-    } else {
-      // 모달로 인해 일시정지시킨 경우 모달 닫히면 원래대로 되돌림
-      if (modalPausedRef.current) {
-        togglePause();
-        modalPausedRef.current = false;
-      }
-    }
-    // gameState.isPaused, togglePause는 의존성으로 포함
-  }, [showApiInitModal, gameState.isPaused, togglePause]);
 
   // 🎤 VAD 상태 (비활성)
   // const vad = useMicVAD(true);
@@ -180,12 +159,8 @@ export default function App() {
   // 전송 후 즉시 분석결과 조회
   const sendAndFetch = async () => {
     if (!apiKey) {
-      // API 키가 없으면 입력 모달을 띄움
       console.log("API Key is required.");
-      setShowApiKeyModal(true);
-      return;
     }
-
     const ok = await sendBlinkData();
     if (ok) await fetchProcessed();
   };
@@ -204,17 +179,6 @@ export default function App() {
       3
     )} / 최댓값: ${max.toFixed(3)} | 최근 갱신: ${lastTs}`;
   })();
-
-  // helper: try to start the app when both user and apiKey are available
-  const tryStartIfReady = () => {
-    const hasApiKey = Boolean(hasServerApiKey);
-    const hasUserName =
-      Boolean(userInfo?.status?.payload?.name) ||
-      Boolean(localStorage.getItem("userName"));
-    if (hasApiKey && hasUserName) {
-      setStarted(true);
-    }
-  };
 
   // 서버에 API Key 존재 여부 확인
   const fetchHasApiKey = async (userId: string) => {
@@ -301,8 +265,6 @@ export default function App() {
       // 서버에 API Key가 등록되어 있는지 확인
       const hasKey = await fetchHasApiKey(String(uid));
       setHasServerApiKey(hasKey);
-      if (!hasKey) setShowApiKeyModal(true);
-      tryStartIfReady();
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -319,7 +281,6 @@ export default function App() {
       // 등록 성공 시 로컬에 저장하지 않음 — 서버에만 보관
       setHasServerApiKey(true);
       setShowApiKeyModal(false);
-      tryStartIfReady();
     } catch (e) {
       alert("서버에 API Key 등록 중 오류가 발생했습니다.");
       console.error(e);
@@ -335,14 +296,13 @@ export default function App() {
       await fetchUserInfo(String(uid));
     }
     setShowUserModal(false);
-    tryStartIfReady();
   };
 
   // render user modal (입력/저장)
   return (
     <div style={styles.wrap}>
       {/* 사용자명 입력 모달 */}
-      {showUserModal && (
+      {showUserModal && showInitModal && (
         <div
           style={{
             position: "fixed",
@@ -400,8 +360,8 @@ export default function App() {
         </div>
       )}
 
-      {/* 시작하기 전에 모달 */}
-      {!started && !hasServerApiKey && (
+      {/* 시작하기 전 API 등록 모달 */}
+      {!showUserModal && !hasServerApiKey && showInitModal && (
         <div
           style={{
             position: "fixed",
@@ -431,7 +391,7 @@ export default function App() {
             </p>
             <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "center" }}>
               <button
-                onClick={() => setShowApiKeyModal(true)}
+                onClick={() => { setShowInitModal(false); setShowApiKeyModal(true) } }
                 style={{
                   padding: "8px 12px",
                   borderRadius: 6,
@@ -444,7 +404,7 @@ export default function App() {
                 API Key 등록하고 시작
               </button>
               <button
-                onClick={() => { setStarted(true); setShowApiInitModal(false); }}
+                onClick={() => { setShowInitModal(false); }}
                 style={{
                   padding: "8px 12px",
                   borderRadius: 6,
