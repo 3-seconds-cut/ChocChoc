@@ -7,8 +7,10 @@ import { useGameLogic } from "./useGameLogic";
 import { GameUI } from "./GameUI";
 import { VideoDisplay } from "./components/VideoDisplay";
 import { ControlPanel } from "./components/ControlPanel";
-// import { useMicVAD } from "./hooks/useMicVAD"; // VAD 비활성
+import { ReportModal } from "./components/ReportModal";
 import { useInit } from "./hooks/useInit";
+import { UserModal } from "./components/UserModal";
+import { ApiKeyModal } from "./components/ApiKeyModal";
 
 export default function App() {
   // 카메라 관련 로직
@@ -46,9 +48,6 @@ export default function App() {
   // 게임 로직
   const { gameState, resetGame, togglePause, restoreHeart, loseHeart } =
     useGameLogic(blink.blinks, blink.lastBlinkAt);
-
-  // 🎤 VAD 상태 (비활성)
-  // const vad = useMicVAD(true);
 
   // 투명도 변경 이벤트 리스너 (새 기능 유지)
   useEffect(() => {
@@ -188,66 +187,17 @@ export default function App() {
   // render user modal (입력/저장)
   return (
     <div style={styles.wrap}>
-      {/* 사용자명 입력 모달 */}
-      {showUserModal && showInitModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 10000,
-            padding: 20,
-          }}
-        >
-          <div
-            style={{
-              width: 380,
-              maxWidth: "100%",
-              background: "#fff",
-              borderRadius: 8,
-              padding: 20,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-              textAlign: "center",
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>사용자 이름 입력</h3>
-            <input
-              type="text"
-              placeholder="이름을 입력하세요"
-              value={tempUserName}
-              onChange={(e) => setTempUserName(e.target.value)}
-              style={{
-                padding: "8px",
-                borderRadius: 4,
-                border: "1px solid #ddd",
-                width: "100%",
-                marginBottom: 16,
-              }}
-            />
-            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <button
-                onClick={handleUserSave}
-                disabled={!tempUserName.trim()}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: tempUserName.trim() ? "#007BFF" : "#ccc",
-                  color: "#fff",
-                  cursor: tempUserName.trim() ? "pointer" : "not-allowed",
-                }}
-              >
-                저장
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 사용자명 입력 모달 (컴포넌트화) */}
+      <UserModal
+        visible={showUserModal && showInitModal}
+        value={tempUserName}
+        onChange={setTempUserName}
+        onSave={handleUserSave}
+        onClose={() => setShowUserModal(false)}
+        disabled={!tempUserName.trim()}
+      />
 
-      {/* 시작하기 전 API 등록 모달 */}
+      {/* 시작하기 전 안내 모달 */}
       {!showUserModal && !hasServerApiKey && showInitModal && (
         <div
           style={{
@@ -278,7 +228,7 @@ export default function App() {
             </p>
             <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "center" }}>
               <button
-                onClick={() => { setShowInitModal(false); setShowApiKeyModal(true) } }
+                onClick={() => { setShowInitModal(false); setShowApiKeyModal(true); } }
                 style={{
                   padding: "8px 12px",
                   borderRadius: 6,
@@ -310,76 +260,16 @@ export default function App() {
         </div>
       )}
 
-      {/* API Key 입력 모달 (useInit 훅에서 제공) */}
-      {!showUserModal && showApiKeyModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 10000,
-            padding: 20,
-          }}
-        >
-          <div
-            style={{
-              width: 380,
-              maxWidth: "100%",
-              background: "#fff",
-              borderRadius: 8,
-              padding: 20,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.3)",
-              textAlign: "center",
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>API Key 입력</h3>
-            <input
-              type="text"
-              placeholder="API Key를 입력하세요"
-              value={tempApiKey}
-              onChange={(e) => setTempApiKey(e.target.value)}
-              style={{
-                padding: "8px",
-                borderRadius: 4,
-                border: "1px solid #ddd",
-                width: "100%",
-                marginBottom: 16,
-              }}
-            />
-            <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-              <button
-                onClick={handleApiKeySave}
-                disabled={!tempApiKey}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "none",
-                  background: tempApiKey ? "#007BFF" : "#ccc",
-                  color: "#fff",
-                  cursor: tempApiKey ? "pointer" : "not-allowed",
-                }}
-              >
-                저장하고 시작
-              </button>
-              <button
-                onClick={() => setShowApiKeyModal(false)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid #ddd",
-                  background: "#f6f6f6",
-                  cursor: "pointer",
-                }}
-              >
-                취소
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* API Key 입력 모달 (컴포넌트화) */}
+      <ApiKeyModal
+        visible={!showUserModal && showApiKeyModal}
+        value={tempApiKey}
+        onChange={setTempApiKey}
+        onSave={handleApiKeySave}
+        onClose={() => setShowApiKeyModal(false)}
+        disabled={!tempApiKey}
+        subtitle="서버에 안전하게 보관됩니다."
+      />
 
       {/* 게임 UI */}
       <GameUI
@@ -463,79 +353,12 @@ export default function App() {
         카운트되지 않아요!
       </p> */}
 
-      {/* 임시 결과 패널 */}
-      {processed && (
-        <div
-          style={{
-            position: "relative",
-            background: "rgba(0,0,0,0.85)",
-            color: "#fff",
-            padding: 12,
-            borderRadius: 8,
-            marginTop: 10,
-            fontFamily: "monospace",
-          }}
-        >
-          <div
-            style={{
-              marginBottom: 8,
-              fontWeight: 700,
-              textAlign: "center",
-              fontSize: "18px",
-            }}
-          >
-            <b>"{String(processed.user_name)}"의 눈 건강 리포트 💾</b>
-          </div>
-
-          {"message" in processed && !("report" in processed) && (
-            <div style={{ marginBottom: 6 }}>{String(processed.message)}</div>
-          )}
-
-          {"daily_blink_per_minute" in processed && (
-            <div style={{ marginTop: 6 }}>
-              <b>오늘의 평균 눈 깜박임 횟수 👁️</b>{" "}
-              {Number(processed.daily_blink_per_minute || 0).toFixed(2)}회 / 분
-            </div>
-          )}
-
-          {"report" in processed && (
-            <div
-              style={{ marginTop: 6, textAlign: "center", fontSize: "15px" }}
-            >
-              <b>['촉💦'의 한 마디]</b>
-            </div>
-          )}
-
-          {"report" in processed && (
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                maxHeight: 220,
-                overflow: "auto",
-              }}
-            >
-              {processed.report}
-            </pre>
-          )}
-
-          {"daily_line_plot_b64" in processed && (
-            <div
-              style={{ marginTop: 6, textAlign: "center", fontSize: "15px" }}
-            >
-              <b>[오늘의 깜빡✨ 그래프]</b>
-            </div>
-          )}
-
-          {"daily_line_plot_b64" in processed &&
-            processed.daily_line_plot_b64 && (
-              <img
-                alt="plot"
-                style={{ width: "100%", marginTop: 8, borderRadius: 6 }}
-                src={`data:image/png;base64,${processed.daily_line_plot_b64}`}
-              />
-            )}
-        </div>
-      )}
+      {/* 처리 결과 모달 (분리된 컴포넌트) */}
+      <ReportModal
+        visible={!!processed}
+        processed={processed}
+        onClose={() => setProcessed(null)}
+      />
     </div>
   );
 }
