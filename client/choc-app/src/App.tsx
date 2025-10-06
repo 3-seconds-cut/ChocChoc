@@ -551,7 +551,7 @@ export default function App() {
           onShowHUDChange={setShowHUD}
           onStopCamera={stopCamera}
           onStartCamera={() => startCamera()}
-          apiKey={apiKey}
+          hasApiKey={hasServerApiKey}
           onOpenApiKeyModal={() => {
             setTempApiKey(apiKey || ""); // 기존 API Key를 입력 필드에 채움
             setShowApiKeyModal(true); // 모달 열기
