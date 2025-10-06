@@ -41,7 +41,6 @@ export default function App() {
   const [showApiKeyModal, setShowApiKeyModal] = useState(false); // API Key 입력 모달 표시 상태
   const [hasServerApiKey, setHasServerApiKey] = useState(false); // 서버에 API Key 존재 여부
   const [tempApiKey, setTempApiKey] = useState(""); // 입력용 임시 상태
-  const [apiKey, setApiKey] = useState<string | null>(null);
 
   // 사용자명 등록 모달 관련 상태 (최초 실행 시 서버/로컬에 없으면 입력)
   const [showUserModal, setShowUserModal] = useState(false);
@@ -279,8 +278,25 @@ export default function App() {
       });
       if (!res.ok) throw new Error("API Key 등록 실패");
       // 등록 성공 시 로컬에 저장하지 않음 — 서버에만 보관
-      setHasServerApiKey(true);
-      setShowApiKeyModal(false);
+      setHasServerApiKey(true)
+      setShowApiKeyModal(false)
+      setTempApiKey("");
+    } catch (e) {
+      alert("서버에 API Key 등록 중 오류가 발생했습니다.");
+      console.error(e);
+    }
+  };
+
+  const handleApiKeyClear = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/clear-apikey`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+       body: JSON.stringify({ user_id: localStorage.getItem("userId") ?? "1" }),
+      });
+      if (!res.ok) throw new Error("API Key 삭제 실패");
+      // 삭제 성공 시 로컬 상태 갱신
+      setHasServerApiKey(false);
     } catch (e) {
       alert("서버에 API Key 등록 중 오류가 발생했습니다.");
       console.error(e);
@@ -553,12 +569,10 @@ export default function App() {
           onStartCamera={() => startCamera()}
           hasApiKey={hasServerApiKey}
           onOpenApiKeyModal={() => {
-            setTempApiKey(apiKey || ""); // 기존 API Key를 입력 필드에 채움
             setShowApiKeyModal(true); // 모달 열기
           }}
           onClearApiKey={() => {
-            setApiKey(null); // API Key 초기화
-            localStorage.removeItem("apiKey"); // 로컬 스토리지에서 삭제
+            handleApiKeyClear(); // 서버에 API Key 삭제 요청
           }}
         />
       )}
