@@ -81,10 +81,12 @@ async def register_user(req: RegisterUserRequest):
     honor_store.setdefault(uid, {"user_id": uid, "title": "눈물의 여왕", "color": "#FF5000"})
     return {"ok": True, "created": True, "user": user}
 
+def exists_api_key(user_id: str) -> bool:
+    return user_id in api_key_store and bool(api_key_store.get(user_id))
+
 @app.get("/has-apikey")
 async def has_apikey(user_id: str = Query("1")):
-    exists = user_id in api_key_store and bool(api_key_store.get(user_id))
-    return {"has_api_key": bool(exists)}
+    return {"has_api_key": bool(exists_api_key(user_id))}
 
 is_valid_api_key = False
 
@@ -99,6 +101,14 @@ async def register_apikey(req: ApiKeyRequest):
     api_key_store[str(req.user_id or "1")] = req.api_key
     print("OPENAI_API_KEY 환경변수에 저장됨")
     return {"message": "API Key registered"}
+
+@app.post("/clear-apikey")
+async def clear_apikey(user_id: str = Query("1")):
+    if exists_api_key(user_id):
+        api_key_store.pop(user_id, None)
+        return {"message": "API Key cleared"}
+    else:
+        raise HTTPException(status_code=400, detail="No API Key to clear")
 
 async def cleanup_loop():
     """1시간 이상 된 항목 정리 루프 (백그라운드 태스크)"""

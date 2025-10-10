@@ -21,7 +21,7 @@ interface ControlPanelProps {
   onStartCamera: () => void;
 
   // API Key 관련 props (optional)
-  apiKey?: string | null;
+  hasApiKey?: boolean;
   onOpenApiKeyModal?: () => void;
   onClearApiKey?: () => void;
 }
@@ -44,7 +44,7 @@ export function ControlPanel({
   onShowHUDChange,
   onStopCamera,
   onStartCamera,
-  apiKey,
+  hasApiKey,
   onOpenApiKeyModal,
   onClearApiKey,
 }: ControlPanelProps) {
@@ -105,8 +105,8 @@ export function ControlPanel({
       <div style={styles.apiRow}>
         <div style={{ fontSize: 12, color: "#ddd" }}>
           API Key:{" "}
-          <b style={{ color: apiKey ? "#21c074" : "#ffb86b" }}>
-            {apiKey ? "등록됨" : "미등록"}
+          <b style={{ color: hasApiKey ? "#21c074" : "#ffb86b" }}>
+            {hasApiKey ? "등록됨" : "미등록"}
           </b>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -117,11 +117,11 @@ export function ControlPanel({
               // 안전하게 App 쪽 핸들러 호출 (App에서는 setTempApiKey/setShowApiKeyModal 등을 처리)
               if (onOpenApiKeyModal) onOpenApiKeyModal();
             }}
-            title={apiKey ? "API Key 수정" : "API Key 등록"}
+            title={hasApiKey ? "API Key 수정" : "API Key 등록"}
           >
-            {apiKey ? "수정" : "등록"}
+            {hasApiKey ? "수정" : "등록"}
           </button>
-          {apiKey && onClearApiKey && (
+          {hasApiKey && onClearApiKey && (
             <button
               style={styles.smallButtonDanger}
               onClick={() => { if (onClearApiKey) onClearApiKey(); }}
