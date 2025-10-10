@@ -43,7 +43,7 @@ export default function App() {
   const [showInitModal, setShowInitModal] = useState(true); // 초기 모달 표시 상태
 
   // 최초 설정 모달이 열려 있으면 깜빡임 감지 비활성화
-  const blink = useBlinkDetector(videoRef, !showInitModal);
+  const blink = useBlinkDetector(videoRef);
 
   // 게임 로직
   const { gameState, resetGame, togglePause, restoreHeart, loseHeart } =
