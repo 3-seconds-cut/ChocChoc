@@ -101,6 +101,7 @@ export default function App() {
     handleUserSave,
     handleApiKeySave,
     handleApiKeyClear,
+    setUserInfo,
   } = useInit(API_BASE, () => {
     // onReady: 양쪽(사용자명 + 서버 API 키) 준비되면 앱 시작
     setShowInitModal(false);
@@ -169,6 +170,17 @@ export default function App() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setProcessed(json);
+      // processed-data 응답에 honor가 있으면 userInfo.honor를 업데이트
+      if (json.honor) {
+        setUserInfo((prev: any) => {
+          // prev가 객체가 아니면 빈 객체로 대체
+          const safePrev = (prev && typeof prev === "object") ? prev : {};
+          return {
+            ...safePrev,
+            honor: json.honor,
+          };
+        });
+      }
       console.log("processed:", json);
     } catch (e) {
       console.error(e);

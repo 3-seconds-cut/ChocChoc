@@ -168,6 +168,7 @@ export function useInit(API_BASE: APIBase, onReady?: () => void) {
     setTempApiKey,
     setShowUserModal,
     setShowApiKeyModal,
+    setUserInfo,
     // handlers
     handleUserSave,
     handleApiKeySave,
