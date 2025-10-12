@@ -90,12 +90,14 @@ export default function App() {
   const {
     userInfo,
     hasServerApiKey,
+    showUserState,
     showUserModal,
     showApiKeyModal,
     tempUserName,
     tempApiKey,
     setTempUserName,
     setTempApiKey,
+    setShowUserState,
     setShowUserModal,
     setShowApiKeyModal,
     handleUserSave,
@@ -294,6 +296,8 @@ export default function App() {
         onToggleContextMenu={() => setShowContextMenu(!showContextMenu)}
         onSendAndFetch={sendAndFetch}
         // 사용자 정보 전달 (processed가 없으면 Guest)
+        showUserHeader={showUserState}
+        onToggleUserHeader={() => setShowUserState(!showUserState)}
         userName={
           userInfo?.status?.payload?.name ??
           processed?.user_name ??

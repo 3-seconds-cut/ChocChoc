@@ -6,6 +6,7 @@ export function useInit(API_BASE: APIBase, onReady?: () => void) {
   const [userInfo, setUserInfo] = useState<any | null>(null);
   const [hasServerApiKey, setHasServerApiKey] = useState(false);
   const [showUserModal, setShowUserModal] = useState(false);
+  const [showUserState, setShowUserState] = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [tempUserName, setTempUserName] = useState("");
   const [tempApiKey, setTempApiKey] = useState("");
@@ -159,6 +160,7 @@ export function useInit(API_BASE: APIBase, onReady?: () => void) {
     // states
     userInfo,
     hasServerApiKey,
+    showUserState,
     showUserModal,
     showApiKeyModal,
     tempUserName,
@@ -166,6 +168,7 @@ export function useInit(API_BASE: APIBase, onReady?: () => void) {
     // setters (if App needs them)
     setTempUserName,
     setTempApiKey,
+    setShowUserState,
     setShowUserModal,
     setShowApiKeyModal,
     // handlers
