@@ -223,23 +223,27 @@ def update_honor(preprocessed_data: pd.DataFrame, analyzed: pd.DataFrame, user_i
                 else:
                     break
 
-            if continuous_days >= 7 and 2 not in honors:
+            if continuous_days >= 3 and 2 not in honors:
                 is_new_honor = True
                 honors.add(2) # 새싹 틔움
-            elif continuous_days >= 30 and 4 not in honors:
+            elif continuous_days >= 10 and 4 not in honors:
                 is_new_honor = True
                 honors.add(4) # 눈물의 여왕
+            elif continuous_days >= 30 and 5 not in honors:
+                is_new_honor = True
+                honors.add(5) # 촉촉함의 신
 
-            now = datetime.now(timezone.utc) - timedelta(months=1) # KST
+            now = datetime.now(timezone.utc) - timedelta(months=1)
             last_year_month = f"{now.year}-{now.month:02d}"
             analyzed_month, analyzed_week, analyzed_today = analyzed
             if (last_month_mean_bpm := analyzed_month.get(last_year_month)):
                 if last_month_mean_bpm > 10 and 3 not in honors:
                     is_new_honor = True
                     honors.add(3) # 수분 파수꾼
-                elif last_month_mean_bpm > 12 and continuous_days >= 200 and 5 not in honors:
+                elif last_month_mean_bpm > 12 and 5 not in honors:
                     is_new_honor = True
                     honors.add(5) # 촉촉함의 신
+
         if is_new_honor:
             honor_store[user_id] = honors
             return HONOR_SETS[str(max(honors))]
