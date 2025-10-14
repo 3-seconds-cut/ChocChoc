@@ -38,6 +38,9 @@ interface GameUIProps {
   userName?: string;
   userId?: string;
   honor?: any;
+  // 유저 상태바 표시 제어
+  showUserHeader?: boolean;
+  onToggleUserHeader?: () => void;
 }
 
 export const GameUI: React.FC<GameUIProps> = ({
@@ -64,6 +67,8 @@ export const GameUI: React.FC<GameUIProps> = ({
   userName,
   userId,
   honor,
+  showUserHeader = true,
+  onToggleUserHeader,
 }) => {
   // display userName/userId from props (fallbacks)
   const displayName = userName ?? "Guest";
@@ -103,12 +108,14 @@ export const GameUI: React.FC<GameUIProps> = ({
 
   return (
     <Container style={{ opacity: getCurrentOpacity() }}>
-      {/* 유저 상태바 */}
-      <Container style={{ opacity: getCurrentOpacity() }}>
-        <UserHeaderContainer>
-          <UserHeader userName={userName} userId={userId} honor={honor} />
-        </UserHeaderContainer>
-      </Container>
+      {/* 유저 상태바 (showUserHeader prop으로 제어) */}
+      {showUserHeader && (
+        <Container style={{ opacity: getCurrentOpacity() }}>
+          <UserHeaderContainer>
+            <UserHeader userName={userName} userId={userId} honor={honor} />
+          </UserHeaderContainer>
+        </Container>
+      )}
       {/* 상단 상태바 */}
       <StatusBar $gamePhase={gamePhase}>
         {/* 중앙: 상태 점 (피버 모드가 아닐 때만 배지 표시) */}
@@ -141,6 +148,14 @@ export const GameUI: React.FC<GameUIProps> = ({
           </ScoreContainer>
 
           <ButtonContainer>
+            {/* 유저 헤더 토글 버튼 */}
+            <Button
+              title={showUserHeader ? "유저 상태바 숨기기" : "유저 상태바 보기"}
+              onClick={() => onToggleUserHeader && onToggleUserHeader()}
+            >
+              👤
+            </Button>
+
             <Button
               $variant="camera"
               $active={isCameraOn}
