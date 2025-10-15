@@ -4,7 +4,9 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from io import BytesIO
+from copy import deepcopy as copy
 from datetime import datetime, timezone
+from dateutil.relativedelta import relativedelta as timedelta
 
 import openai
 
@@ -13,6 +15,13 @@ INTERVAL_THRESHOLD = 60  # seconds
 IDEAL_BLINK_PER_MINUTE = 10
 MIN_LOG_NUM = 5
 
+HONOR_SETS = {
+    "1": {"title": "가뭄", "color":"#888888"},
+    "2": {"title": "새싹 틔움", "color":"#21c074"},
+    "3": {"title": "수분 파수꾼", "color":"#00A3FF"},
+    "4": {"title": "눈물의 여왕", "color":"#FF5000"},
+    "5": {"title": "촉촉함의 신", "color":"#FFD700"},
+}
 
 # Set your OpenAI API key
 client = None
@@ -161,7 +170,7 @@ def plot_blink_data(cleaned_data: pd.DataFrame, date: str):
     sns.lineplot(x=range(len(s)), y=s.values, marker='o', linewidth=2.5)
 
     # x축 라벨을 시간대처럼 보이게
-    plt.xticks(ticks=range(len(s)), labels=getattr(cleaned_data, 'index', range(len(s))), rotation=45)
+    plt.xticks(ticks=range(len(s)), labels=[str(x) for x in s.index], rotation=45)
 
     # y축 안전 계산
     s_min, s_max = float(np.nanmin(s.values)), float(np.nanmax(s.values))
@@ -190,6 +199,56 @@ def plot_blink_data(cleaned_data: pd.DataFrame, date: str):
     plt.close()
     return img
 
+def update_honor(preprocessed_data: pd.DataFrame, analyzed: pd.DataFrame, user_id: str, honor_store: dict) -> dict:
+    """
+    특정 조건에 따라 honor 값을 결정하여 honor_store에 반영
+    예시: 연속 출석 7일 이상이면 '새싹 틔움', 지난 한 달간 분당 평균 깜박임 횟수가 12회 이상이면 '수분 파수꾼', 그 외 '가뭄'
+    """
+    # Default honor_store
+    honors = honor_store.get(user_id, {1})
+    is_new_honor = False
+    try:
+        if preprocessed_data is None or preprocessed_data.empty:
+            pass
+        else:
+            dates = preprocessed_data.apply(lambda x: x.TIMESTAMP.date(), axis=1).unique()
+
+            # count continuous days
+            dates = sorted(dates)
+            continuous_days = 1
+            from itertools import pairwise
+            for day_next, day_prev in pairwise(reversed(dates)):
+                if (day_prev + timedelta(days=1)) == day_next:
+                    continuous_days += 1
+                else:
+                    break
+
+            if continuous_days >= 3 and 2 not in honors:
+                is_new_honor = True
+                honors.add(2) # 새싹 틔움
+            elif continuous_days >= 10 and 4 not in honors:
+                is_new_honor = True
+                honors.add(4) # 눈물의 여왕
+            elif continuous_days >= 30 and 5 not in honors:
+                is_new_honor = True
+                honors.add(5) # 촉촉함의 신
+
+            now = datetime.now(timezone.utc) - timedelta(months=1)
+            last_year_month = f"{now.year}-{now.month:02d}"
+            analyzed_month, analyzed_week, analyzed_today = analyzed
+            if (last_month_mean_bpm := analyzed_month.get(last_year_month)):
+                if last_month_mean_bpm > 10 and 3 not in honors:
+                    is_new_honor = True
+                    honors.add(3) # 수분 파수꾼
+                elif last_month_mean_bpm > 12 and 5 not in honors:
+                    is_new_honor = True
+                    honors.add(5) # 촉촉함의 신
+
+        if is_new_honor:
+            honor_store[user_id] = honors
+            return HONOR_SETS[str(max(honors))]
+    except Exception as e:
+        return None
 
 def generate_report_text(user_info: dict = None, histories: dict = None) -> str:
     """
@@ -248,7 +307,7 @@ def generate_report_text(user_info: dict = None, histories: dict = None) -> str:
     except Exception as e:
         return f"An error occurred: {e}"
 
-def generate_report(raw_data: pd.DataFrame, user_info: dict = None, debug: bool = False) -> str:
+def generate_report(raw_data: pd.DataFrame, user_info: dict = None, debug: bool = False) -> dict:
     """
     Function to generate a report from the blink data.
     :param data: DataFrame containing the blink data.
@@ -281,7 +340,8 @@ def generate_report(raw_data: pd.DataFrame, user_info: dict = None, debug: bool 
     return {
         "user_name": user_info.get('user_name', '사용자'),
         "report": report_text,
-        "daily_blink_per_minute": daily_bpm,
+        "analyzed": analyzed,
+        "daily_blink_per_minute": daily_bpm if np.isfinite(daily_bpm) else 0,
         "daily_line_plot": image,
     }
 

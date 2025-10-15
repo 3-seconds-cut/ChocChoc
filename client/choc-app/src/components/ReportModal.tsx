@@ -63,9 +63,15 @@ export const ReportModal: React.FC<ReportModalProps> = ({ visible, processed, on
             <div style={{ marginBottom: 6 }}>{String(processed.message)}</div>
           )}
 
+          {"honor" in processed && processed.honor && (
+            <div style={{ margin: "10px 0", textAlign: "center", color: processed.honor.color || "#21c074", fontWeight: 700, fontSize: 32 }}>
+              🎉 신규 칭호 획득! <span style={{ color: processed.honor.color || "#21c074" }}>{processed.honor.title}</span>
+            </div>
+          )}
+
           {"daily_blink_per_minute" in processed && (
             <div style={{ marginTop: 6 }}>
-              <b>오늘의 평균 눈 깜박임 횟수 👁️</b>{" "}
+              <b>오늘의 평균 눈 깜빡임 횟수 👁️</b>{" "}
               {Number(processed.daily_blink_per_minute || 0).toFixed(2)}회 / 분
             </div>
           )}

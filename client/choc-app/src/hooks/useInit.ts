@@ -171,6 +171,7 @@ export function useInit(API_BASE: APIBase, onReady?: () => void) {
     setShowUserState,
     setShowUserModal,
     setShowApiKeyModal,
+    setUserInfo,
     // handlers
     handleUserSave,
     handleApiKeySave,

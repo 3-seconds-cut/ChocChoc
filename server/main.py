@@ -77,8 +77,8 @@ async def register_user(req: RegisterUserRequest):
         "created_at": datetime.utcnow().isoformat(),
     }
     user_store[uid] = user
-    # ensure default honor if not present
-    honor_store.setdefault(uid, {"user_id": uid, "title": "눈물의 여왕", "color": "#FF5000"})
+    history_store[uid] = (req.name, pd.DataFrame(columns=["ID", "TIMESTAMP"]))
+    honor_store.setdefault(uid, {"user_id": uid, "title": "눈물 가뭄", "color": "#888888"}) # ensure default honor if not present
     return {"ok": True, "created": True, "user": user}
 
 def exists_api_key(user_id: str) -> bool:
@@ -172,7 +172,7 @@ async def receive_blink_session(data: BlinkSession):
 @app.get("/processed-data/{request_id}")
 async def send_processed_data(request_id: str):
     try:
-        from genai import analyze_tablet_data, generate_report
+        from genai import analyze_tablet_data, generate_report, update_honor
     except openai.OpenAIError as oe:
         print(f"OpenAI error during import: {oe}")
         raise oe
@@ -186,13 +186,30 @@ async def send_processed_data(request_id: str):
         return {"message": "No data found for the given request ID"}
 
     if is_valid_api_key and analyze_tablet_data and generate_report:
-        user_name, history_df = history_store['increase']
-        user_info = {
-            'user_name': user_name,
-            'joined_at': history_df['TIMESTAMP'].min(),
-        }
+        if history_store.get(request_id) is None:
+            history_df = pd.DataFrame(columns=["ID", "TIMESTAMP"])
+        else:
+            _, history_df = history_store[request_id]
+
+        user_info = user_store.get(request_id, {})
+        user_name = user_info.get("name", "Unknown")
+
         preprocessed_data = pd.concat([history_df, pd.DataFrame({"TIMESTAMP": [time_str.split('.')[0] for time_str in saved['payload']['events']]})])
-        report = generate_report(preprocessed_data, user_info=user_info, debug=DEBUG_MODE)
+
+        report = generate_report(
+            preprocessed_data, 
+            user_info={
+                'user_name': user_name,
+                'joined_at': user_info.get('created_at', None),
+            }, 
+            debug=DEBUG_MODE
+        )
+        # Honor 업데이트
+        honor = update_honor(
+            preprocessed_data, report.pop('analyzed', None), user_name, honor_store
+        )
+        if honor:
+            report["honor"] = honor
 
         # ✅ 이미지 바이트를 base64 문자열로 변환해서 JSON 직렬화 가능하게
         img_bytes = report.get("daily_line_plot")

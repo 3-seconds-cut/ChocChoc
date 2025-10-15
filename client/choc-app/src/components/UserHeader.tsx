@@ -14,8 +14,8 @@ export const UserHeader: React.FC<UserHeaderProps> = ({ userName, userId, honor 
 
   // honor 처리: 문자열 또는 객체 지원
   const honorTitle =
-    typeof honor === "string" ? honor : honor?.title ?? "눈물의 여왕";
-  const honorColor = typeof honor === "object" && honor?.color ? honor.color : "#FF5000";
+    typeof honor === "string" ? honor : honor?.title ?? "눈물 가뭄";
+  const honorColor = typeof honor === "object" && honor?.color ? honor.color : "#888888";
 
   return (
     <Container>
